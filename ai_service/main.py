@@ -1,3 +1,4 @@
+# Smart Radiator AI Service - v1.0.1
 from fastapi import FastAPI
 from pydantic import BaseModel
 from datetime import datetime
