@@ -53,15 +53,21 @@ async def confirm(callback: types.CallbackQuery):
     _, room, lvl = callback.data.split(":")
     lvl = float(lvl)
     
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO radiators (room, level) VALUES (%s, %s) ON CONFLICT (room) DO UPDATE SET level = %s, updated_at = CURRENT_TIMESTAMP",
-        (room, lvl, lvl)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO radiators (room, level) VALUES (%s, %s) ON CONFLICT (room) DO UPDATE SET level = %s, updated_at = CURRENT_TIMESTAMP",
+            (room, lvl, lvl)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"✅ Saved {room} = {lvl} to database")
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        await callback.message.edit_text(f"⚠️ Database error: {str(e)}")
+        return
     
     await callback.message.edit_text(f"✅ {room} radiator set to {lvl} (target {ROOMS[room]['target']}°C)")
 
@@ -74,8 +80,8 @@ async def confirm(callback: types.CallbackQuery):
             "radiator_level": lvl,
             "timestamp": "manual"
         }, timeout=5)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ AI training request failed: {e}")
 
 if __name__ == "__main__":
     executor.start_polling(dp)
