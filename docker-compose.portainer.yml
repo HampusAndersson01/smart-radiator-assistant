@@ -1,8 +1,9 @@
 version: "3.8"
 services:
   ai_service:
+    build: ./ai_service
     image: radiator-ai-service:latest
-    pull_policy: never
+    pull_policy: build
     ports:
       - "8000:8000"
     environment:
@@ -20,8 +21,9 @@ services:
               capabilities: [gpu]
 
   bot:
+    build: ./bot
     image: radiator-bot:latest
-    pull_policy: never
+    pull_policy: build
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - AI_URL=http://ai_service:8000/train
