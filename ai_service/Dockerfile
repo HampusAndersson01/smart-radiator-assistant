@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-WORKDIR /app
+WORKDIR /app-v1.0.1
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py forecast.py ./

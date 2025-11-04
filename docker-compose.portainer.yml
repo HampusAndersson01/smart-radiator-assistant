@@ -9,8 +9,8 @@ services:
     environment:
       - TELEGRAM_WEBHOOK=${TELEGRAM_WEBHOOK}
     volumes:
-      - ai_models:/app/models
-      - ai_state:/app
+      - ai_models:/app-v1.0.1/models
+      - ai_state:/app-v1.0.1
     restart: unless-stopped
     deploy:
       resources:
