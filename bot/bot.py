@@ -36,27 +36,27 @@ def get_db():
 async def start(msg: types.Message):
     """Welcome message with menu button"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(types.KeyboardButton("🔧 Set Radiator"))
+    keyboard.add(types.KeyboardButton("🔧 Ställ in element"))
     keyboard.add(types.KeyboardButton("📊 Status"))
     
     await msg.reply(
-        "🏠 *Smart Radiator Assistant*\n\n"
-        "Control your radiators with AI-powered temperature management.\n\n"
-        "Use the menu below or type /set",
+        "🏠 *Smart Element Assistent*\n\n"
+        "Styr dina element med AI-driven temperaturhantering.\n\n"
+        "Använd menyn nedan eller skriv /set",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
 
-@dp.message_handler(lambda msg: msg.text == "🔧 Set Radiator")
+@dp.message_handler(lambda msg: msg.text == "🔧 Ställ in element")
 @dp.message_handler(commands=['set'])
 async def set_radiator(msg: types.Message):
     kb = types.InlineKeyboardMarkup(row_width=2)
     buttons = [
-        types.InlineKeyboardButton(text=f"🌡️ {room}", callback_data=f"room:{room}")
+        types.InlineKeyboardButton(text=room, callback_data=f"room:{room}")
         for room in ROOMS
     ]
     kb.add(*buttons)
-    await msg.reply("*Select room:*", reply_markup=kb, parse_mode="Markdown")
+    await msg.reply("*Välj rum:*", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message_handler(lambda msg: msg.text == "📊 Status")
 async def status(msg: types.Message):
@@ -70,18 +70,18 @@ async def status(msg: types.Message):
         conn.close()
         
         if not rows:
-            await msg.reply("No radiator levels set yet. Use 🔧 Set Radiator to configure.")
+            await msg.reply("Inga elementnivåer inställda än. Använd 🔧 Ställ in element för att konfigurera.")
             return
         
-        status_text = "📊 *Current Radiator Levels:*\n\n"
+        status_text = "📊 *Aktuella elementnivåer:*\n\n"
         for room, level, updated in rows:
             target = ROOMS.get(room, {}).get("target", "?")
-            status_text += f"🌡️ *{room}*: Level {level} (Target {target}°C)\n"
-            status_text += f"   _Updated: {updated.strftime('%H:%M %d/%m')}_\n\n"
+            status_text += f"🌡️ *{room}*: Nivå {level} (Måltemp {target}°C)\n"
+            status_text += f"   _Uppdaterad: {updated.strftime('%H:%M %d/%m')}_\n\n"
         
         await msg.reply(status_text, parse_mode="Markdown")
     except Exception as e:
-        await msg.reply(f"⚠️ Error fetching status: {str(e)}")
+        await msg.reply(f"⚠️ Fel vid hämtning av status: {str(e)}")
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith("room:"))
 async def choose_level(callback: types.CallbackQuery):
@@ -111,10 +111,10 @@ async def choose_level(callback: types.CallbackQuery):
     kb.add(*buttons)
     
     await callback.message.edit_text(
-        f"🌡️ *{room}*\n"
-        f"Target: {target}°C\n"
-        f"Current: {current}\n\n"
-        f"Select level:",
+        f"*{room}*\n"
+        f"Måltemp: {target}°C\n"
+        f"Aktuell nivå: {current}\n\n"
+        f"Välj nivå:",
         reply_markup=kb,
         parse_mode="Markdown"
     )
@@ -140,7 +140,7 @@ async def confirm(callback: types.CallbackQuery):
         await callback.message.edit_text(f"⚠️ Database error: {str(e)}")
         return
     
-    await callback.message.edit_text(f"✅ {room} radiator set to {lvl} (target {ROOMS[room]['target']}°C)")
+    await callback.message.edit_text(f"✅ {room} element inställt på {lvl} (måltemp {ROOMS[room]['target']}°C)")
 
     # Send a training ping (manual set). Current temp is left 0: n8n / sensors should provide real values
     try:
