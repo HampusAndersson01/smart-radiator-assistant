@@ -2,10 +2,22 @@
 
 This repository provides a local, modular Smart Radiator Assistant consisting of:
 
-- `ai_service` — FastAPI microservice that trains/predicts radiator level using River (online ML).
+- `ai_service` — FastAPI microservice that trains/predicts radiator level using River (online ML) **with comprehensive AI statistics and performance tracking**.
 - `bot` — Telegram bot (aiogram) for manual radiator setting (`/set`).
 - `n8n` — n8n workflow to collect sensor data and call the AI service.
 - `docker-compose.yml` — stack suitable for deploying in Portainer (paste into a Stack).
+
+## 🎓 Assignment Documentation
+
+**NEW:** This project includes comprehensive AI statistics and metrics for academic evaluation:
+
+- **📊 `/stats` endpoint** - Detailed AI performance metrics (MAE, RMSE, R², training samples, predictions, etc.)
+- **📈 Performance tracking** - Continuous monitoring of model accuracy and efficiency
+- **💾 Database logging** - PostgreSQL logging of all AI decisions and training events
+- **📝 Full documentation** - See `AI_ASSIGNMENT_DOCUMENTATION.md` for complete writeup
+- **🧪 Testing suite** - Run `python3 test_ai_stats.py` to demonstrate AI capabilities
+
+**Quick start for testing:** See `QUICK_REFERENCE.md`
 
 ## Quick files added
 

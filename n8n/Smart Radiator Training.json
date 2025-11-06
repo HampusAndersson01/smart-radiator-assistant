@@ -1,0 +1,362 @@
+{
+  "name": "Smart Radiator Training",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://home.nmless.xyz/api/states",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjMWVjMmU2MWE0MjE0OGUzYmNmNjRkZGIwMWFkODc0YSIsImlhdCI6MTc2MjI1MDQyOSwiZXhwIjoyMDc3NjEwNDI5fQ.gur4nUOjrXY9ZZhKVKV6UJXA9Q-auSAK_Y8MtbsQ410"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9da3a467-1255-486f-b9f2-997495b1da6c",
+      "name": "Fetch Home Assistant States",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        224,
+        0
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.1.183:8000/",
+        "options": {}
+      },
+      "id": "69e6f9ea-cb2d-4342-ae6f-dfd75b9e65f1",
+      "name": "Fetch Radiator Levels from AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        448,
+        0
+      ],
+      "typeVersion": 4.2,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map Home Assistant sensors to rooms\nconst sensorMapping = {\n  'Badrum': 'sensor.bathroom_temperature_temperatur',\n  'Sovrum': 'sensor.bedroom_presence_temperatur', \n  'Kontor': 'sensor.office_temperatur',\n  'Vardagsrum': 'sensor.kitchen_temperatur'\n};\n\nconst haStates = $('Fetch Home Assistant States').all();\nconst aiState = $('Fetch Radiator Levels from AI').first().json;\n\n// Get outdoor temp from AI service\nconst outdoor_temp = aiState.weather?.outdoor_temp || 5;\nconst forecast_temp = aiState.weather?.forecast_3h || outdoor_temp;\n\nconst payloads = [];\n\n// For each room, build training payload\nfor (const [room, targetTemp] of Object.entries({\n  'Badrum': 22.5,\n  'Sovrum': 20,\n  'Kontor': 20,\n  'Vardagsrum': 21\n})) {\n  // Find temperature sensor in HA\n  const sensorId = sensorMapping[room];\n  const tempSensor = haStates.find(s => s.json.entity_id === sensorId);\n  \n  if (!tempSensor) {\n    console.log(`Warning: Sensor ${sensorId} not found for ${room}`);\n    continue;\n  }\n  \n  const currentTemp = parseFloat(tempSensor.json.state);\n  \n  // Get radiator level from AI service state\n  const radiatorLevel = aiState.rooms?.[room]?.current_level || 0;\n  \n  payloads.push({\n    json: {\n      room: room,\n      current_temp: currentTemp,\n      target_temp: targetTemp,\n      radiator_level: radiatorLevel,\n      outdoor_temp: outdoor_temp,\n      forecast_temp: forecast_temp,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn payloads;"
+      },
+      "id": "850945e0-4bf2-4b42-86df-71d8b1ccea7b",
+      "name": "Build Training Payloads",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        672,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.183:8000/train",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "83096719-febd-4490-9af0-7230c1d0d8c8",
+      "name": "Train AI Model",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        880,
+        0
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "cbce52f7-d6bc-49a1-8540-5d477e239d60",
+      "name": "Prediction Schedule (Hourly)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        0,
+        304
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "url": "https://home.nmless.xyz/api/states",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjMWVjMmU2MWE0MjE0OGUzYmNmNjRkZGIwMWFkODc0YSIsImlhdCI6MTc2MjI1MDQyOSwiZXhwIjoyMDc3NjEwNDI5fQ.gur4nUOjrXY9ZZhKVKV6UJXA9Q-auSAK_Y8MtbsQ410"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "663a5122-2715-4a7e-948c-65e80231e96d",
+      "name": "Fetch HA States for Prediction",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        224,
+        304
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Same sensor mapping as training\nconst sensorMapping = {\n  'Badrum': 'sensor.bathroom_temperature_temperatur',\n  'Sovrum': 'sensor.bedroom_presence_temperatur',\n  'Kontor': 'sensor.office_temperatur',\n  'Vardagsrum': 'sensor.kitchen_temperatur'\n};\n\nconst haStates = $input.all();\nconst payloads = [];\n\nfor (const [room, targetTemp] of Object.entries({\n  'Badrum': 22.5,\n  'Sovrum': 20,\n  'Kontor': 20,\n  'Vardagsrum': 21\n})) {\n  const sensorId = sensorMapping[room];\n  const tempSensor = haStates.find(s => s.json.entity_id === sensorId);\n  \n  if (!tempSensor) continue;\n  \n  const currentTemp = parseFloat(tempSensor.json.state);\n  // Radiator level will be fetched from database by AI service\n  const radiatorLevel = 0; // Placeholder, AI will get actual value\n  \n  payloads.push({\n    json: {\n      room: room,\n      current_temp: currentTemp,\n      target_temp: targetTemp,\n      radiator_level: radiatorLevel,\n      outdoor_temp: null,\n      forecast_temp: null,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn payloads;"
+      },
+      "id": "f3c171c1-a6ec-4cb4-a20a-1f583f92c34a",
+      "name": "Build Prediction Payloads",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        448,
+        304
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.183:8000/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "cd94c3a1-d266-4ce5-ba96-2a1792756825",
+      "name": "Get AI Predictions",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        672,
+        304
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "1836a3c4-f86e-4b09-a33a-5fd4ae20f491",
+      "name": "Training Schedule (Every 15min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all predictions\nconst predictions = $input.all();\nconst inputs = $('Build Prediction Payloads').all();\n\nlet message = '🤖 *Radiator AI*\\n';\nlet hasChanges = false;\n\nfor (let i = 0; i < predictions.length; i++) {\n  const pred = predictions[i].json;\n  const input = inputs[i]?.json;\n  \n  if (!input) continue;\n  \n  const room = input.room;\n  const currentTemp = input.current_temp;\n  const targetTemp = input.target_temp;\n  const recommended = pred.recommended;\n  const currentLevel = input.radiator_level;\n  const delta = (currentTemp - targetTemp).toFixed(1);\n  \n  // Only show if there's a recommended change\n  if (recommended !== currentLevel) {\n    hasChanges = true;\n    const change = recommended > currentLevel ? '📈' : '📉';\n    message += `\\n${change} *${room}*: ${currentLevel} → ${recommended}`;\n    message += ` (${delta > 0 ? '+' : ''}${delta}°C)`;\n  }\n}\n\n// Only return a message if there are changes\nif (hasChanges) {\n  return [{ json: { text: message } }];\n} else {\n  return [];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        304
+      ],
+      "id": "55377b61-cf51-4d07-8d1c-d8886c384d4d",
+      "name": "Code in JavaScript",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "chatId": "6483085285",
+        "text": "={{ $json }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1264,
+        304
+      ],
+      "id": "b416b431-2966-44eb-8a09-f1ab34e17924",
+      "name": "Send a text message",
+      "webhookId": "02e4dbb0-b33b-46d2-b87b-671a44fcde81",
+      "credentials": {
+        "telegramApi": {
+          "id": "psz9OooRoIM4uAKv",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0e4d6ac4-2fde-44e7-bc28-571a16594b9d",
+              "leftValue": "={{ $json }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        304
+      ],
+      "id": "d6184148-b09b-4bf1-b45b-0fd358e0c739",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Fetch Home Assistant States": {
+      "main": [
+        [
+          {
+            "node": "Fetch Radiator Levels from AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Radiator Levels from AI": {
+      "main": [
+        [
+          {
+            "node": "Build Training Payloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Training Payloads": {
+      "main": [
+        [
+          {
+            "node": "Train AI Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prediction Schedule (Hourly)": {
+      "main": [
+        [
+          {
+            "node": "Fetch HA States for Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch HA States for Prediction": {
+      "main": [
+        [
+          {
+            "node": "Build Prediction Payloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prediction Payloads": {
+      "main": [
+        [
+          {
+            "node": "Get AI Predictions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Training Schedule (Every 15min)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Home Assistant States",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get AI Predictions": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b6d4e8c2-8bce-4ff5-8fd7-fcfa8233296a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fae56690ffee78442640f016b8f77f99bdbbe429f02e6307f736b795e86f037"
+  },
+  "id": "Y3enAzIekXNFWlds",
+  "tags": []
+}

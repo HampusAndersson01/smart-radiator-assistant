@@ -1,7 +1,9 @@
 version: "3.8"
 services:
   ai_service:
-    image: namelesshampus/radiator-ai-service:latest
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
