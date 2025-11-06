@@ -1,25 +1,15 @@
-version: "3.8"
 services:
   ai_service:
-    build:
-      context: ./ai_service
-      dockerfile: Dockerfile
+    image: namelesshampus/radiator-ai-service:latest
     ports:
       - "8000:8000"
     environment:
-      - TELEGRAM_WEBHOOK=${TELEGRAM_WEBHOOK}
+      - TELEGRAM_WEBHOOK=${TELEGRAM_WEBHOOK:-}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-host.docker.internal}:5432/radiator
     volumes:
-      - ai_models:/app-v1.0.2/models
-      - ai_state:/app-v1.0.2
+      - ai_models:/app/models
+      - ai_state:/app
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   bot:
     image: namelesshampus/radiator-bot:latest

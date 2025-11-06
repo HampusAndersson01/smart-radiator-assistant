@@ -1,121 +1,376 @@
-# Smart Radiator Assistant — Local Portainer Setup
+<div align="center">
 
-This repository provides a local, modular Smart Radiator Assistant consisting of:
+# 🏠 Smart Radiator Assistant
 
-- `ai_service` — FastAPI microservice that trains/predicts radiator level using River (online ML) **with comprehensive AI statistics and performance tracking**.
-- `bot` — Telegram bot (aiogram) for manual radiator setting (`/set`).
-- `n8n` — n8n workflow to collect sensor data and call the AI service.
-- `docker-compose.yml` — stack suitable for deploying in Portainer (paste into a Stack).
+**Intelligent home heating automation with AI-powered predictions**
 
-## 🎓 Assignment Documentation
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/u/namelesshampus)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**NEW:** This project includes comprehensive AI statistics and metrics for academic evaluation:
+*Automate your radiator settings with machine learning and smart home integration*
 
-- **📊 `/stats` endpoint** - Detailed AI performance metrics (MAE, RMSE, R², training samples, predictions, etc.)
-- **📈 Performance tracking** - Continuous monitoring of model accuracy and efficiency
-- **💾 Database logging** - PostgreSQL logging of all AI decisions and training events
-- **📝 Full documentation** - See `AI_ASSIGNMENT_DOCUMENTATION.md` for complete writeup
-- **🧪 Testing suite** - Run `python3 test_ai_stats.py` to demonstrate AI capabilities
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api-endpoints)
 
-**Quick start for testing:** See `QUICK_REFERENCE.md`
-
-## Quick files added
-
-- `ai_service/` — FastAPI app, forecast util, Dockerfile, requirements.
-- `bot/` — Telegram bot, config, Dockerfile, requirements.
-- `n8n/radiator_flow.json` — n8n flow you can import.
-- `.env.example` — example env file for credentials.
-
-## Goals
-
-1. Run everything locally on your Ubuntu server.
-2. Deploy via Portainer Stacks (docker-compose paste).
-3. Keep data local (models saved to PostgreSQL database).
-
-## Steps to deploy with Portainer (recommended)
-
-1. Copy `.env.example` to `.env` and fill in your `BOT_TOKEN` (and optionally `TELEGRAM_WEBHOOK`).
-
-2. Deploy with Portainer (Stack):
-
-   - Open Portainer > Stacks > Add stack.
-   - Give it a name (e.g., `smart-radiator-assistant`).
-   - Paste the contents of `docker-compose.yml` into the Web editor.
-   - Under "Environment variables" provide `BOT_TOKEN` and `TELEGRAM_WEBHOOK` or add an `.env` file accessible to Portainer.
-   - Deploy the stack. Portainer will build the stack from the provided `build:` contexts.
-
-3. **Connect to your existing n8n instance:**
-
-   Since n8n is already running in a separate Portainer stack, you'll need to ensure network connectivity:
-   
-   - **Option A (Recommended)**: Add both stacks to the same Docker network:
-     - Create a shared network: `docker network create radiator-network`
-     - In Portainer, edit both stacks to use this network (add `networks:` section)
-     - In n8n flows, use `http://ai_service:8000` to reach the AI service
-   
-   - **Option B**: Use host networking or publish the AI service port (already exposed on 8000) and access via `http://<server-ip>:8000` from n8n workflows.
-
-Notes on Portainer building: Portainer will attempt to build images if it has access to the stack files; if it cannot build from local Dockerfiles, either build locally and push to a registry (then change compose to use `image: <repo/name:tag>`) or use Portainer's Git integration to point to a repo URL.
-
-## Import the n8n flow (into your existing n8n instance)
-
-1. Open your existing n8n instance (e.g., `http://<server>:5678`).
-2. In n8n: Click the 3-dot menu > Import > paste the JSON from `n8n/radiator_flow.json`.
-3. **Important**: Update the HTTP Request node URLs to match how n8n will reach the AI service:
-   - If using shared Docker network: `http://ai_service:8000/train` and `http://ai_service:8000/predict`
-   - If using host networking: `http://<server-ip>:8000/train` and `http://<server-ip>:8000/predict`
-4. Edit the HTTP Request nodes: set the Home Assistant URL (if different), map sensor payloads to the AI `/train` and `/predict` inputs.
-
-## File/Deployment notes
-
-- Models and state are stored in `ai_service/models` and `ai_service/last_temps.json`. These are mounted as volumes in `docker-compose.yml` so data persists.
-- The bot uses long polling (aiogram) and requires `BOT_TOKEN` to be set. Webhook support can be added later.
-- `TELEGRAM_WEBHOOK` in `.env` is used by `ai_service` to send simple alert messages (optional).
-
-### GPU Support
-
-The `docker-compose.yml` now includes GPU runtime configuration for the AI service. **Important notes:**
-
-1. **River (current ML library) doesn't use GPU** — River is designed for online/incremental learning and runs efficiently on CPU. The current model (ARFRegressor) won't benefit from GPU acceleration.
-
-2. **GPU prerequisites** (if you want GPU-ready for future models):
-   - NVIDIA GPU on the host
-   - NVIDIA Container Toolkit installed: [Install Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-   - Test with: `docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi`
-
-3. **Remove GPU config if not needed**: If you don't have a GPU or don't plan to use GPU-accelerated models, remove the `deploy.resources` section from `ai_service` in `docker-compose.yml` to avoid deployment errors.
-
-4. **For GPU-accelerated ML** (future enhancement): Replace River with PyTorch/TensorFlow and update requirements. For this radiator use case, CPU-based River is perfectly adequate and more efficient.
-
-## Quick validation (after deploy)
-
-- AI service health: `curl http://<server-ip>:8000/docs` to open FastAPI docs.
-- Predict endpoint example:
-
-  ```bash
-  curl -X POST http://<server-ip>:8000/predict -H "Content-Type: application/json" \
-    -d '{"room":"Bathroom","current_temp":20.1,"target_temp":22.5,"radiator_level":3,"timestamp":"now"}'
-  ```
-
-- Bot: Start the bot's Telegram chat and run `/set`.
-
-## Troubleshooting tips
-
-- If Portainer fails to build: run `docker compose build` on the server manually to see build logs.
-- If ai_service can't reach Open-Meteo API, check outgoing network/firewall.
-- If bot doesn't start, verify `BOT_TOKEN` is correct and container logs.
-
-## Next steps / enhancements
-
-- Wire real sensor values from Home Assistant in the n8n flow and map them to the AI endpoints.
-- Add authentication to the AI endpoints (e.g., simple token) for security.
-- Convert the bot to use webhooks (requires HTTPS + public URL or a reverse proxy).
+</div>
 
 ---
 
-If you want, I can now:
+## 📋 Overview
 
-1. Build the docker-compose locally and run a quick smoke test (if Docker is available here).
-2. Create a small example n8n node mapping for Home Assistant sensor payloads.
+Smart Radiator Assistant is a complete home automation solution that uses **online machine learning** to optimize your radiator settings. It learns from your preferences and environmental data to maintain perfect room temperature while minimizing energy consumption.
 
-Tell me which one to do next.
+### �️ Architecture
+
+```
+┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│   Home Assistant │      │      n8n         │      │   Telegram Bot  │
+│   (Sensors)      │─────▶│   (Automation)   │◀────▶│  (Manual Ctrl)  │
+└─────────────────┘      └──────────────────┘      └─────────────────┘
+                                  │
+                                  ▼
+                         ┌──────────────────┐
+                         │   AI Service     │
+                         │   FastAPI + ML   │
+                         └──────────────────┘
+                                  │
+                                  ▼
+                         ┌──────────────────┐
+                         │   PostgreSQL     │
+                         │   (Model State)  │
+                         └──────────────────┘
+```
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%">
+
+### 🤖 AI-Powered
+- **Online Machine Learning** using River (ARFRegressor)
+- Adapts to your heating preferences in real-time
+- Weather-aware predictions via Open-Meteo API
+- Comprehensive performance metrics
+
+</td>
+<td width="50%">
+
+### 🔧 Easy Integration
+- **Docker-based deployment** - up and running in minutes
+- **Telegram bot** for manual control
+- **n8n workflows** for Home Assistant integration
+- **RESTful API** with interactive docs
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 📊 Monitoring
+- Real-time AI statistics (MAE, RMSE, R²)
+- Training history and prediction logs
+- Database-backed persistence
+- FastAPI interactive documentation
+
+</td>
+<td width="50%">
+
+### 🚀 Production Ready
+- Pre-built Docker images on Docker Hub
+- Automated build & deployment scripts
+- PostgreSQL for data persistence
+- Scalable microservice architecture
+
+</td>
+</tr>
+</table>
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Docker & Docker Compose
+- PostgreSQL database
+- Telegram Bot Token ([get one from @BotFather](https://t.me/botfather))
+- (Optional) n8n instance for automation
+
+### 1️⃣ Clone & Configure
+
+```bash
+git clone https://github.com/HampusAndersson01/smart-radiator-assistant.git
+cd smart-radiator-assistant
+cp .env.example .env
+```
+
+Edit `.env` and add your credentials:
+```bash
+BOT_TOKEN=your_telegram_bot_token
+POSTGRES_PASSWORD=your_db_password
+POSTGRES_HOST=your_db_host
+```
+
+### 2️⃣ Deploy with Docker Compose
+
+```bash
+# Pull latest images and start services
+docker compose pull
+docker compose up -d
+
+# Check status
+docker compose ps
+docker compose logs -f
+```
+
+### 3️⃣ Verify Installation
+
+```bash
+# Test AI service
+curl http://localhost:8000/docs
+
+# Check AI statistics
+curl http://localhost:8000/stats
+
+# Send test prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "room": "Living Room",
+    "current_temp": 20.5,
+    "target_temp": 22.0,
+    "radiator_level": 3,
+    "timestamp": "now"
+  }'
+```
+
+## 📦 Services
+
+### AI Service
+**Port:** `8000`  
+**Image:** `namelesshampus/radiator-ai-service:latest`
+
+FastAPI microservice providing ML-powered radiator predictions and training endpoints.
+
+### Telegram Bot
+**Image:** `namelesshampus/radiator-bot:latest`
+
+Interactive Telegram bot for manual radiator control and status queries.
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `BOT_TOKEN` | Telegram bot authentication token | ✅ | - |
+| `DATABASE_URL` | PostgreSQL connection string | ✅ | - |
+| `POSTGRES_USER` | Database username | ❌ | `postgres` |
+| `POSTGRES_PASSWORD` | Database password | ✅ | - |
+| `POSTGRES_HOST` | Database host | ❌ | `host.docker.internal` |
+| `TELEGRAM_WEBHOOK` | Webhook URL for notifications | ❌ | - |
+| `ALLOWED_CHAT_IDS` | Comma-separated list of allowed Telegram chat IDs | ❌ | - |
+
+## 🌐 API Endpoints
+
+### Training
+```http
+POST /train
+```
+Train the model with new sensor data.
+
+**Body:**
+```json
+{
+  "room": "Bedroom",
+  "current_temp": 21.5,
+  "target_temp": 22.0,
+  "radiator_level": 4,
+  "timestamp": "2025-11-06T18:00:00"
+}
+```
+
+### Prediction
+```http
+POST /predict
+```
+Get AI-recommended radiator level.
+
+**Body:** Same as `/train`
+
+**Response:**
+```json
+{
+  "predicted_level": 3.8,
+  "room": "Bedroom",
+  "outdoor_temp": 5.2,
+  "timestamp": "2025-11-06T18:00:00"
+}
+```
+
+### Statistics
+```http
+GET /stats
+```
+Get comprehensive AI performance metrics.
+
+**Response:**
+```json
+{
+  "total_predictions": 1250,
+  "total_training_samples": 850,
+  "mae": 0.42,
+  "rmse": 0.58,
+  "r2_score": 0.87
+}
+```
+
+### Interactive Documentation
+Visit `http://localhost:8000/docs` for full Swagger UI documentation.
+
+## 🔄 n8n Integration
+
+### Import Workflow
+
+1. Open your n8n instance
+2. Go to **Workflows** → **Import from File**
+3. Select `n8n/Smart Radiator Training.json`
+4. Update HTTP Request nodes with your AI service URL:
+   - If using Docker network: `http://ai_service:8000`
+   - If using host: `http://<your-server-ip>:8000`
+
+### Network Setup
+
+**Option A: Shared Docker Network (Recommended)**
+```bash
+docker network create radiator-network
+```
+Add to both n8n and radiator stacks' compose files:
+```yaml
+networks:
+  radiator-network:
+    external: true
+```
+
+**Option B: Host Network**
+Use `http://<server-ip>:8000` in n8n HTTP Request nodes.
+
+## 🛠️ Development
+
+### Build Images Locally
+
+```bash
+# Build and push to Docker Hub
+./build-and-push.sh
+
+# Build specific version
+./build-and-push.sh v1.0.0
+```
+
+### Manual Build
+
+```bash
+# Build AI service
+docker build -t namelesshampus/radiator-ai-service:latest ./ai_service
+
+# Build bot
+docker build -t namelesshampus/radiator-bot:latest ./bot
+```
+
+### Update Deployment
+
+```bash
+# Pull latest images and restart
+docker compose pull && docker compose up -d
+```
+
+## 📊 Monitoring & Logs
+
+```bash
+# View all logs
+docker compose logs -f
+
+# View specific service
+docker compose logs -f ai_service
+docker compose logs -f bot
+
+# Check service status
+docker compose ps
+
+# Restart services
+docker compose restart
+```
+
+## 🐛 Troubleshooting
+
+<details>
+<summary><b>Bot not responding</b></summary>
+
+- Verify `BOT_TOKEN` is correct in `.env`
+- Check bot logs: `docker compose logs bot`
+- Ensure bot is started in Telegram (send `/start`)
+</details>
+
+<details>
+<summary><b>AI service unreachable</b></summary>
+
+- Verify service is running: `docker compose ps`
+- Check port 8000 is not in use: `netstat -tuln | grep 8000`
+- Review logs: `docker compose logs ai_service`
+</details>
+
+<details>
+<summary><b>Database connection errors</b></summary>
+
+- Verify PostgreSQL is running and accessible
+- Check `DATABASE_URL` format: `postgresql://user:password@host:5432/radiator`
+- Ensure database `radiator` exists
+</details>
+
+<details>
+<summary><b>n8n can't reach AI service</b></summary>
+
+- Ensure both are on the same Docker network
+- Use service name `ai_service` not `localhost`
+- Check firewall rules if using host networking
+</details>
+
+## 📚 Documentation
+
+- **[Database Schema](DATABASE_SCHEMA.md)** - Complete database structure
+- **[API Documentation](http://localhost:8000/docs)** - Interactive Swagger UI (when running)
+- **[n8n Workflows](n8n/)** - Automation templates
+
+## 🎓 Academic Features
+
+This project includes comprehensive metrics for academic evaluation:
+
+- **Performance Metrics**: MAE, RMSE, R² scoring
+- **Training Analytics**: Sample counts, model convergence tracking
+- **Prediction Logging**: Full audit trail of AI decisions
+- **Database Persistence**: PostgreSQL-backed model state
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **[River](https://riverml.xyz/)** - Online machine learning framework
+- **[FastAPI](https://fastapi.tiangolo.com/)** - Modern web framework
+- **[aiogram](https://aiogram.dev/)** - Telegram bot framework
+- **[n8n](https://n8n.io/)** - Workflow automation
+
+---
+
+<div align="center">
+
+**Made with ❤️ for smart home automation**
+
+[⬆ Back to Top](#-smart-radiator-assistant)
+
+</div>
