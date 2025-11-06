@@ -8,7 +8,7 @@ read
 echo "🗑️  Dropping and recreating database..."
 
 # Connect to PostgreSQL and reset
-docker-compose exec -T postgres psql -U postgres <<EOF
+docker compose exec -T postgres psql -U postgres <<EOF
 -- Drop the database
 DROP DATABASE IF EXISTS smart_radiator_ai;
 
@@ -23,7 +23,7 @@ EOF
 echo "✅ Database reset complete!"
 echo ""
 echo "🔄 Restarting AI service to initialize fresh schema..."
-docker-compose restart ai_service
+docker compose restart ai_service
 
 echo ""
 echo "✅ Done! The system is now starting fresh with no training data."
