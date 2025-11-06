@@ -519,3 +519,80 @@ def get_radiator_history(room: str = None, hours: int = 24) -> List[Dict]:
     except Exception as e:
         print(f"Error getting radiator history: {e}")
         return []
+
+def get_latest_training_events(limit: int = 10) -> List[Dict]:
+    """Get the latest training events across all rooms"""
+    if not DATABASE_URL:
+        return []
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT room, current_temp, target_temp, radiator_level, 
+                   temperature_delta, predicted_delta, outdoor_temp, 
+                   forecast_temp, hour_of_day, timestamp
+            FROM training_history
+            ORDER BY timestamp DESC
+            LIMIT %s
+        """, (limit,))
+        
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return [dict(row) for row in results]
+    except Exception as e:
+        print(f"Error getting latest training events: {e}")
+        return []
+
+def get_latest_predictions(limit: int = 10) -> List[Dict]:
+    """Get the latest predictions across all rooms"""
+    if not DATABASE_URL:
+        return []
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT room, current_temp, target_temp, current_radiator_level, 
+                   recommended_level, predicted_error, outdoor_temp, 
+                   forecast_temp, adjustment_made, timestamp
+            FROM predictions
+            ORDER BY timestamp DESC
+            LIMIT %s
+        """, (limit,))
+        
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return [dict(row) for row in results]
+    except Exception as e:
+        print(f"Error getting latest predictions: {e}")
+        return []
+
+def get_training_count_last_24h() -> int:
+    """Get the count of training events in the last 24 hours"""
+    if not DATABASE_URL:
+        return 0
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT COUNT(*) FROM training_history
+            WHERE timestamp > NOW() - INTERVAL '24 hours'
+        """)
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"Error getting training count: {e}")
+        return 0
