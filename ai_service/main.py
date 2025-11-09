@@ -378,13 +378,23 @@ ROOMS = {
 
 class RoomState(BaseModel):
     room: str
-    current_temp: float
-    target_temp: float
-    radiator_level: float
+    current_temp: float | None = None
+    target_temp: float | None = None
+    radiator_level: float | None = None
     outdoor_temp: float | None = None
     forecast_temp: float | None = None
     forecast_10h_temp: float | None = None
     timestamp: str
+    
+    def validate_required_fields(self):
+        """Validate that required fields are not None"""
+        if self.current_temp is None:
+            raise ValueError(f"current_temp is required for room {self.room}")
+        if self.target_temp is None:
+            raise ValueError(f"target_temp is required for room {self.room}")
+        if self.radiator_level is None:
+            raise ValueError(f"radiator_level is required for room {self.room}")
+        return True
 
 class ModelMetrics:
     """Track AI model performance metrics"""
@@ -895,6 +905,12 @@ def perform_back_evaluation(room: str, model):
 @app.post("/train")
 def train(state: RoomState):
     """Train the model with new data and perform back-evaluation on past predictions"""
+    # Validate required fields are not None
+    try:
+        state.validate_required_fields()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    
     model = load_model(state.room)
     
     # STEP 1: Perform back-evaluation on past predictions
@@ -1003,6 +1019,12 @@ def train(state: RoomState):
 @app.post("/predict")
 def predict(state: RoomState):
     """Get radiator level recommendation focusing on 24h temperature stability"""
+    # Validate required fields are not None
+    try:
+        state.validate_required_fields()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    
     if state.outdoor_temp is None or state.forecast_temp is None or state.forecast_10h_temp is None:
         outside, forecast_3h, forecast_10h = get_weather()
         state.outdoor_temp, state.forecast_temp, state.forecast_10h_temp = outside, forecast_3h, forecast_10h
@@ -2176,6 +2198,7 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
         }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -2514,7 +2537,7 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                 return;
             }
             
-            const learningRate = prompt('🎚️ Learning rate factor (0.1-1.0)?\n0.3 = very conservative\n0.5 = balanced (recommended)\n0.8 = aggressive', '0.5');
+            const learningRate = prompt('Learning rate factor (0.1-1.0)?\\n0.3=conservative, 0.5=balanced, 0.8=aggressive', '0.5');
             if (!learningRate) return;
             
             const lrNum = parseFloat(learningRate);
@@ -2523,7 +2546,7 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                 return;
             }
             
-            if (!confirm(`🔄 This will fine-tune all models using ${daysNum} days of historical data with ${lrNum}x learning rate.\\n\\n✅ Current knowledge preserved\\n📈 Models will learn from past patterns\\n⏱️ May take 10-30 seconds\\n\\nContinue?`)) {
+            if (!confirm(`Fine-tune models using ${daysNum} days of data with ${lrNum}x learning rate?\\n\\nMay take 10-30 seconds.`)) {
                 return;
             }
             
@@ -2664,13 +2687,25 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
             "Vardagsrum": 21
         };
         
+        console.log('🚀 Analytics JavaScript loaded, ROOM_TARGETS:', Object.keys(ROOM_TARGETS));
+        
         // Load room insights with AI reasoning
         async function loadRoomInsights() {
+            console.log('🔍 Loading room insights...');
             try {
                 const response = await fetch('/analytics/room-insights');
+                console.log('📡 Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const insights = await response.json();
+                console.log('✅ Insights loaded:', Object.keys(insights));
                 
                 const container = document.getElementById('room-insights-container');
+                if (!container) {
+                    console.error('❌ Container not found!');
+                    return;
+                }
                 container.innerHTML = '';
                 
                 for (const [room, data] of Object.entries(insights)) {
@@ -2701,9 +2736,9 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                                 <strong>Forecast:</strong> ${state.forecast_temp}°C
                             </div>
                             <div>
-                                <strong>MAE:</strong> ${perf.mae}°C<br>
-                                <strong>R²:</strong> ${perf.r2_score}<br>
-                                <strong>24h Avg Error:</strong> ${perf['24h_avg_error']}°C
+                                <strong>MAE:</strong> ${perf.mae.toFixed(3)}°C<br>
+                                <strong>R²:</strong> ${perf.r2_score.toFixed(2)}<br>
+                                <strong>24h Predictions:</strong> ${perf['24h_predictions']}
                             </div>
                         </div>
                         
@@ -2724,22 +2759,37 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                     
                     container.appendChild(card);
                 }
+                console.log('✅ Room insights rendered successfully');
             } catch (error) {
-                console.error('Error loading room insights:', error);
-                document.getElementById('room-insights-container').innerHTML = 
-                    '<p style="color:#dc3545;text-align:center;">Error loading insights</p>';
+                console.error('❌ Error loading room insights:', error);
+                const container = document.getElementById('room-insights-container');
+                if (container) {
+                    container.innerHTML = 
+                        `<p style="color:#dc3545;text-align:center;">Error loading insights: ${error.message}</p>`;
+                }
             }
         }
         
         // Load temperature timeline charts
         async function loadTimelineCharts() {
+            console.log('📊 Loading timeline charts...');
             try {
                 const container = document.getElementById('timeline-graphs-container');
+                if (!container) {
+                    console.error('❌ Timeline container not found!');
+                    return;
+                }
                 container.innerHTML = '';
                 
                 for (const room of Object.keys(ROOM_TARGETS)) {
+                    console.log(`📈 Loading timeline for ${room}...`);
                     const response = await fetch(`/analytics/temperature-timeline?room=${room}&hours=48`);
+                    if (!response.ok) {
+                        console.error(`❌ Failed to load timeline for ${room}: ${response.status}`);
+                        continue;
+                    }
                     const data = await response.json();
+                    console.log(`✅ Timeline data for ${room}:`, data.actual.length, 'actual points,', data.predictions.length, 'predictions');
                     
                     const chartDiv = document.createElement('div');
                     chartDiv.className = 'graph-container';
@@ -2771,10 +2821,10 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                     }));
                     
                     const predictedTemps = data.predictions
-                        .filter(d => d.predicted_temp !== null)
+                        .filter(d => d.current_temp !== null)
                         .map(d => ({
                             x: new Date(d.timestamp),
-                            y: d.predicted_temp
+                            y: d.current_temp // Show what temp was at prediction time
                         }));
                     
                     const outdoorTemps = data.actual
@@ -2882,17 +2932,25 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                     });
                 }
             } catch (error) {
-                console.error('Error loading timeline charts:', error);
-                document.getElementById('timeline-graphs-container').innerHTML = 
-                    '<p style="color:#dc3545;text-align:center;">Error loading timeline</p>';
+                console.error('❌ Error loading timeline charts:', error);
+                const container = document.getElementById('timeline-graphs-container');
+                if (container) {
+                    container.innerHTML = 
+                        `<p style="color:#dc3545;text-align:center;">Error loading timeline: ${error.message}</p>`;
+                }
             }
         }
         
         // Load prediction accuracy trends
         async function loadAccuracyTrends() {
+            console.log('📈 Loading accuracy trends...');
             try {
                 const response = await fetch('/analytics/prediction-accuracy?days=7');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
+                console.log('✅ Accuracy data loaded:', Object.keys(data));
                 
                 const container = document.getElementById('accuracy-trends-container');
                 container.innerHTML = '';
@@ -3138,7 +3196,7 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
                 }
                 
                 if (Object.keys(data).length === 0) {
-                    container.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No temperature data available yet. Graphs will appear once training data is collected.</p>';
+                    container.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No data yet. Graphs appear after training.</p>';
                 }
             } catch (error) {
                 console.error('Error loading graphs:', error);
@@ -3171,6 +3229,15 @@ def ui_dashboard(training_page: int = 1, predictions_page: int = 1):
         
         // Load graphs on page load
         window.addEventListener('DOMContentLoaded', () => {
+            console.log('🎯 DOM loaded, starting analytics...');
+            console.log('📦 Functions available:', typeof loadRoomInsights, typeof loadTimelineCharts, typeof loadAccuracyTrends);
+            
+            // Test: immediately update the containers to verify JS is running
+            const testDiv = document.getElementById('room-insights-container');
+            if (testDiv) {
+                testDiv.innerHTML = '<p style="color:green;text-align:center;">✅ JavaScript is running! Loading data...</p>';
+            }
+            
             loadRoomInsights();
             loadTimelineCharts();
             loadAccuracyTrends();

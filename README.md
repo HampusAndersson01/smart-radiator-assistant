@@ -225,13 +225,15 @@ Train the model with new sensor data. **Automatically performs back-evaluation**
   "room": "Bedroom",
   "current_temp": 21.5,
   "target_temp": 22.0,
-  "radiator_level": 4,
+  "radiator_level": 4.0,
   "outdoor_temp": 2.0,
   "forecast_temp": -1.0,
   "forecast_10h_temp": -5.0,
   "timestamp": "2025-11-06T18:00:00"
 }
 ```
+
+**Note:** `radiator_level` accepts both integers and floats (e.g., 4, 4.0, 4.5) for precise control.
 
 **Response:**
 ```json
@@ -343,7 +345,7 @@ Get progress of reset/retrain operation.
 }
 ```
 
-### Analytics Endpoints
+### Analytics & Monitoring
 
 #### Statistics
 ```http
@@ -381,6 +383,85 @@ POST /validate-predictions
 ```
 Manually trigger validation of past predictions (also runs hourly automatically).
 
+#### Room Insights
+```http
+GET /analytics/room-insights
+```
+Comprehensive analytics with AI reasoning for all rooms.
+
+**Response:**
+```json
+{
+  "Bedroom": {
+    "current_state": {
+      "temperature": 21.5,
+      "target": 22.0,
+      "deviation": -0.5,
+      "status": "adjusting"
+    },
+    "latest_prediction": {
+      "recommended_level": 5.5,
+      "predicted_error": 0.4,
+      "confidence": 0.85
+    },
+    "performance": {
+      "training_samples": 732,
+      "mae": 0.156,
+      "24h_predictions": 48
+    },
+    "reasoning": "❄️ Room -0.5°C too cold → increasing heating | ⚖️ Balanced mode..."
+  }
+}
+```
+
+#### Prediction Accuracy Trends
+```http
+GET /analytics/prediction-accuracy?days=7
+```
+Time-series accuracy data showing model improvement over time.
+
+**Response:**
+```json
+{
+  "Bedroom": [
+    {
+      "date": "2025-11-07",
+      "avg_error": 0.52,
+      "prediction_count": 24,
+      "adjustments_made": 8
+    }
+  ]
+}
+```
+
+#### Temperature Timeline
+```http
+GET /analytics/temperature-timeline?room=Bedroom&hours=48
+```
+Historical temperature data with predictions for charting.
+
+**Response:**
+```json
+{
+  "actual": [
+    {
+      "timestamp": "2025-11-09T10:00:00",
+      "temperature": 21.5,
+      "target": 22.0,
+      "outdoor_temp": 5.0
+    }
+  ],
+  "predictions": [
+    {
+      "timestamp": "2025-11-09T10:00:00",
+      "recommended_level": 5.0,
+      "predicted_error": 0.3,
+      "current_temp": 21.5
+    }
+  ]
+}
+```
+
 ### Data Export
 
 #### Historical Data
@@ -399,12 +480,20 @@ Download CSV file for analysis in Excel/Python.
 ```http
 GET /ui
 ```
-Visual dashboard showing:
+Comprehensive visual dashboard with real-time analytics:
+
+**Core Metrics:**
 - Real-time training events with pagination
 - Latest predictions per room
 - Per-room performance metrics (MAE, RMSE, R²)
 - Training samples and prediction counts
 - Weather conditions (current, 3h, 10h forecast)
+
+**Advanced Analytics (New):**
+- 🧠 **AI Decision Insights & Reasoning** - Real-time explanations of why the AI recommends each radiator setting
+- 📈 **Temperature Timeline Charts** - 48-hour actual vs predicted temperature graphs with outdoor correlation
+- 🎯 **Prediction Accuracy Trends** - 7-day time-series showing model improvement over time
+- Auto-refresh every 60 seconds
 
 #### Dashboard Controls
 The UI includes three action buttons:
@@ -683,6 +772,58 @@ This project implements advanced thermal control AI with:
 - **Comprehensive Metrics**: MAE, RMSE, R², training samples, validation accuracy
 - **Complete Audit Trail**: All training events, predictions, and validations logged
 - **Export Capabilities**: CSV export for analysis (Excel, Python, R)
+
+## 🐛 Troubleshooting
+
+### n8n Integration Issues
+
+#### "Input should be a valid number" Error
+**Problem:** n8n sends `radiator_level` with null values or decimal points that were previously rejected.
+
+**Solution:** The API now accepts both integers and floats for `radiator_level` (e.g., 4, 4.0, 4.5). Ensure your n8n workflow:
+1. Filters out items with null values before sending to `/train` or `/predict`
+2. Uses proper data mapping from Home Assistant sensors
+3. Provides default values for missing data: `{{ $json.current_temp ?? 0 }}`
+
+**Add a Filter Node:**
+```
+Conditions: 
+  current_temp is not empty AND 
+  target_temp is not empty AND 
+  radiator_level is not empty
+```
+
+#### Dashboard Analytics Not Loading
+**Problem:** "Loading AI insights..." stays indefinitely.
+
+**Solution:** This was caused by JavaScript syntax errors. The issue has been fixed in the latest version. If you still see this:
+1. Hard refresh your browser (`Ctrl+F5` or `Cmd+Shift+R`)
+2. Check browser console (F12) for any JavaScript errors
+3. Verify CDN access to Chart.js and date-fns libraries
+4. Ensure analytics endpoints return data: `curl http://localhost:8000/analytics/room-insights`
+
+### Database Issues
+
+#### Connection Errors
+**Problem:** `connection refused` or `authentication failed`
+
+**Solution:**
+```bash
+# Check if PostgreSQL is running
+docker compose ps
+
+# Restart services
+docker compose restart
+
+# Check logs
+docker compose logs postgres
+```
+
+#### Reset After Schema Changes
+If database schema is updated:
+```bash
+./reset_database.sh  # WARNING: Deletes all data
+```
 
 ## 🤝 Contributing
 
