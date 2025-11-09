@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏠 Radiator AI Assistant
+# 🏠 Radiator AI Assistant WIP
 
 **Intelligent home heating automation with AI-powered predictions**
 
@@ -50,9 +50,11 @@ Smart Radiator Assistant is a complete home automation solution that uses **onli
 
 ### 🤖 AI-Powered
 - **Online Machine Learning** using River (ARFRegressor)
+- **8-hour stability prediction** - optimizes for long-term comfort, not instant reactions
 - **Dual weather forecasts** (3h + 10h ahead) for better predictions
-- **Night mode optimization** - predicts full 8-hour sleep period
-- **Self-training predictions** - validates and learns from own forecasts
+- **Automatic back-evaluation** - learns from past prediction errors every training cycle
+- **Smart adjustment logic** - gradual changes with ±0.3°C tolerance band
+- **Physics-based training** - understands radiator dynamics (higher level = more heat)
 - Adapts to your heating preferences in real-time
 
 </td>
@@ -72,7 +74,8 @@ Smart Radiator Assistant is a complete home automation solution that uses **onli
 
 ### 📊 Advanced Analytics
 - Real-time AI statistics (MAE, RMSE, R²)
-- **Prediction validation tracking** - measures accuracy over time
+- **Automatic back-evaluation** - compares predictions vs actual outcomes
+- **Accelerated historical backtraining** - refine models without reset
 - Training history and prediction logs
 - **Database-backed persistence** - survives restarts
 - Export data to CSV for analysis
@@ -84,27 +87,43 @@ Smart Radiator Assistant is a complete home automation solution that uses **onli
 - Pre-built Docker images on Docker Hub
 - Automated build & deployment scripts
 - PostgreSQL for data persistence
-- **Background validation** - auto-trains every hour
+- **Automatic back-evaluation** - learns from past predictions every hour
+- **Gradual adjustment logic** - prevents drastic temperature changes
 - Scalable microservice architecture
 
 </td>
 </tr>
 </table>
 
-### 🌙 Night Mode
-In the evening (6 PM - 11 PM), the AI automatically switches to **night mode**:
-- Predicts temperature for the **next 8 hours** (full sleep period)
-- Uses 10-hour weather forecast for overnight planning
-- Prevents waking up cold at 3 AM
-- Optimizes radiator settings before bedtime
+### �️ 8-Hour Stability Prediction
+The AI simulates temperature evolution **8 hours ahead** for each radiator level:
+- Predicts how each setting will affect temperature over time
+- Uses 3h and 10h weather forecasts for outdoor conditions
+- Selects level with **lowest average error** over 8 hours
+- Optimizes for long-term comfort, not instant reactions
 
 ### 🎯 Self-Improving AI
-The system learns from its own predictions:
-1. Makes a prediction (e.g., "temperature will be 19.5°C in 3 hours")
-2. Stores the prediction with timestamp
-3. After 3 hours, compares actual temperature to prediction
-4. Trains the model on the difference
-5. Gets better over time!
+The system continuously learns from its own predictions:
+1. **Makes predictions** (e.g., "temperature will be 19.5°C in 3 hours")
+2. **Stores predictions** with timestamp in database
+3. **After 3 hours**, compares actual temperature to prediction
+4. **Automatically trains** on the difference (back-evaluation)
+5. **Gets better over time** without manual intervention
+
+### 🔧 Smart Adjustment Logic
+Prevents overreacting and ensures comfort:
+- **Acceptable Deviation**: ±0.3°C tolerance (no adjustment if close to target)
+- **Gradual Changes**: Maximum ±1.5 level change per cycle
+- **Minimum Threshold**: Only adjusts if change ≥0.5 levels
+- **Example**: Instead of jumping 5 → 0, gradually adjusts 5 → 3.5
+
+### 📚 Accelerated Historical Backtraining
+Refine models using past data **without resetting**:
+- Processes days/weeks of historical training data
+- Preserves all current learned knowledge
+- Time-based confidence decay (recent data weighted higher)
+- Configurable learning rate (conservative to aggressive)
+- Shows before/after error improvement metrics
 
 ## 🚀 Quick Start
 
@@ -198,7 +217,7 @@ Interactive Telegram bot for manual radiator control and status queries.
 ```http
 POST /train
 ```
-Train the model with new sensor data.
+Train the model with new sensor data. **Automatically performs back-evaluation** on past predictions.
 
 **Body:**
 ```json
@@ -214,23 +233,112 @@ Train the model with new sensor data.
 }
 ```
 
+**Response:**
+```json
+{
+  "trained": true,
+  "delta": 0.234,
+  "training_samples": 732,
+  "model_mae": 0.156,
+  "back_evaluation": {
+    "validated": 3,
+    "trained_on": 2
+  }
+}
+```
+
 #### Prediction
 ```http
 POST /predict
 ```
-Get AI-recommended radiator level (with night mode optimization).
+Get AI-recommended radiator level with 8-hour stability prediction.
 
 **Response:**
 ```json
 {
   "recommended": 4.5,
   "error": 0.3,
+  "current_level": 4.0,
   "adjustment_needed": true,
-  "forecast_future": {
-    "hours_ahead": 8,
-    "mode": "night",
-    "recommended_level": 5.0,
-    "proactive_warning": true
+  "adjustment_reason": "Gradual adjustment (limited to ±1.5)",
+  "current_deviation": 0.4,
+  "method": "ml_with_hints",
+  "prediction_details": [
+    {
+      "level": 4.5,
+      "immediate_temp": 21.8,
+      "temp_8h": 22.1,
+      "avg_error_8h": 0.3,
+      "stability_score": 0.3
+    }
+  ]
+}
+```
+
+#### Reset and Retrain
+```http
+POST /reset-and-retrain
+```
+Delete all models and retrain from scratch with physics-based hints.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "All models reset and retrained successfully",
+  "rooms_trained": ["Badrum", "Sovrum", "Kontor", "Vardagsrum"],
+  "training_samples": {
+    "Badrum": 610,
+    "Sovrum": 735
+  }
+}
+```
+
+#### Accelerated Historical Backtraining
+```http
+POST /accelerated-backtrain?days=7&learning_rate_factor=0.5
+```
+Refine models using historical data **without resetting**. Preserves all current knowledge.
+
+**Parameters:**
+- `days` (1-90): Days of historical data to train on
+- `learning_rate_factor` (0.1-1.0): Training conservativeness
+  - 0.3 = very conservative
+  - 0.5 = balanced (recommended)
+  - 0.8 = aggressive
+
+**Response:**
+```json
+{
+  "status": "success",
+  "results": {
+    "Kontor": {
+      "samples_processed": 482,
+      "avg_error_before": 0.3421,
+      "avg_error_after": 0.2834,
+      "improvement_percent": 17.2
+    }
+  }
+}
+```
+
+#### Retrain Progress
+```http
+GET /retrain-progress
+```
+Get progress of reset/retrain operation.
+
+**Response:**
+```json
+{
+  "progress": 100.0,
+  "trained_rooms": 4,
+  "total_rooms": 4,
+  "room_status": {
+    "Kontor": {
+      "training_samples": 732,
+      "status": "trained"
+    }
   }
 }
 ```
@@ -292,11 +400,28 @@ Download CSV file for analysis in Excel/Python.
 GET /ui
 ```
 Visual dashboard showing:
-- Real-time training events
-- Latest predictions
-- Per-room performance metrics
-- Validation statistics
-- Weather conditions
+- Real-time training events with pagination
+- Latest predictions per room
+- Per-room performance metrics (MAE, RMSE, R²)
+- Training samples and prediction counts
+- Weather conditions (current, 3h, 10h forecast)
+
+#### Dashboard Controls
+The UI includes three action buttons:
+
+1. **🔄 Refresh** (Blue) - Reload page to see latest data
+2. **🔄 Reset & Retrain AI** (Red) - Destructive operation
+   - Deletes all trained models
+   - Retrains from scratch with physics hints + historical data
+   - Shows progress modal with per-room status
+   - Use when: Algorithm improvements, feature changes
+   
+3. **📚 Backtrain on History** (Green) - Non-destructive refinement
+   - Refines existing models using historical data
+   - Preserves all current knowledge
+   - Interactive prompts for days (1-90) and learning rate (0.1-1.0)
+   - Shows before/after error improvement per room
+   - Use when: Seasonal changes, poor predictions, want to leverage past data
 
 ### Interactive Documentation
 Visit `http://localhost:8000/docs` for full Swagger UI documentation.
@@ -408,6 +533,37 @@ docker compose restart
 - Check firewall rules if using host networking
 </details>
 
+<details>
+<summary><b>Predictions seem inaccurate</b></summary>
+
+**Try these solutions in order:**
+
+1. **Accelerated Backtrain** (Recommended, non-destructive)
+   - Use UI button "📚 Backtrain on History"
+   - Or: `curl -X POST http://localhost:8000/accelerated-backtrain?days=7&learning_rate_factor=0.5`
+   - Refines model using past data without losing current knowledge
+
+2. **Check Training Data**
+   - Visit `/ui` dashboard
+   - Verify training samples > 500 per room
+   - Check MAE < 0.5°C
+
+3. **Reset & Retrain** (Last resort, destructive)
+   - Use UI button "🔄 Reset & Retrain AI"
+   - Only if backtraining doesn't help
+   - Starts completely fresh
+</details>
+
+<details>
+<summary><b>Model making drastic changes</b></summary>
+
+This should be fixed with the gradual adjustment logic:
+- Maximum ±1.5 level change per cycle
+- ±0.3°C tolerance band (no adjustment if close)
+- Check `/predict` response for `adjustment_reason`
+- Review Telegram notifications for adjustment explanations
+</details>
+
 ## 📚 Documentation
 
 - **[Database Schema](DATABASE_SCHEMA.md)** - Complete database structure
@@ -415,7 +571,59 @@ docker compose restart
 - **[Web Dashboard](http://localhost:8000/ui)** - Visual monitoring interface
 - **[n8n Workflows](n8n/)** - Automation templates
 
-## 🔄 Database Management
+## 🎓 AI Training Strategies
+
+### Automatic Back-Evaluation (Always Active)
+- ✅ Enabled on every `/train` call
+- Validates predictions made ~3 hours ago
+- Trains on prediction errors automatically
+- No manual intervention needed
+
+### When to Use Each Training Method
+
+| Method | Type | Preserves Knowledge | Best For |
+|--------|------|---------------------|----------|
+| **Back-Evaluation** | Automatic | ✅ Yes | Daily operation |
+| **Accelerated Backtrain** | Manual | ✅ Yes | Seasonal changes, refinement |
+| **Reset & Retrain** | Manual | ❌ No | Algorithm updates, feature changes |
+
+### Accelerated Backtraining Guide
+
+#### Conservative (Recommended for first time)
+```bash
+POST /accelerated-backtrain?days=7&learning_rate_factor=0.5
+```
+- Last week's data
+- Balanced learning
+- Safe for production
+
+#### Aggressive (After major changes)
+```bash
+POST /accelerated-backtrain?days=30&learning_rate_factor=0.8
+```
+- Last month's data
+- Rapid adaptation
+- Use after holidays or weather pattern changes
+
+#### Gentle Refinement
+```bash
+POST /accelerated-backtrain?days=14&learning_rate_factor=0.3
+```
+- Two weeks of data
+- Very conservative
+- Minimal disruption to current behavior
+
+### Recommended Schedule
+```
+Hourly:    Automatic back-evaluation (built-in)
+Daily:     Monitor prediction accuracy via /ui
+Weekly:    Accelerated backtrain (7 days, 0.5 rate)
+Monthly:   Review metrics and adjust strategy
+Seasonal:  Accelerated backtrain (30 days, 0.3 rate)
+Never:     Automatic reset (manual control only)
+```
+
+## 🔄 Model Management
 
 ### Reset Database (Start Fresh)
 If you want to clear all training data and start learning from scratch:
@@ -429,10 +637,11 @@ This will:
 - ❌ Remove all ML models
 - ❌ Clear prediction logs
 - ✅ Recreate fresh database schema
-- ✅ Restart AI service with new feature set
+- ✅ Restart AI service
 
 **Use this when:**
-- Updating model features (like adding 10h forecast)
+- Updating database schema
+- Major system architecture changes
 - Switching room configurations
 - Testing different learning approaches
 
@@ -446,17 +655,34 @@ docker compose exec postgres pg_dump -U postgres radiators > backup.sql
 cat backup.sql | docker compose exec -T postgres psql -U postgres radiators
 ```
 
-## 🎓 Academic Features
+## 🎓 Key Technical Features
 
-This project includes comprehensive metrics for academic evaluation:
+This project implements advanced thermal control AI with:
 
-- **Performance Metrics**: MAE, RMSE, R² scoring with per-room granularity
-- **Prediction Validation**: Compares forecasts to actual outcomes
-- **Training Analytics**: Sample counts, model convergence tracking, validation accuracy
-- **Self-Learning Loop**: AI improves by validating its own predictions
-- **Database Persistence**: PostgreSQL-backed complete audit trail
-- **Export Capabilities**: CSV export for external analysis (Excel, Python, R)
-- **Time-Series Data**: Historical tracking for trend analysis
+### Smart Prediction System
+- **8-Hour Lookahead**: Simulates temperature evolution for stability optimization
+- **Physics-Based Learning**: Understands radiator dynamics (level → heat output)
+- **Dual Weather Integration**: SMHI 3h and 10h forecasts for outdoor conditions
+- **Per-Room Models**: Independent learning for each room's unique characteristics
+
+### Intelligent Adjustment Logic
+- **Gradual Changes**: Maximum ±1.5 level change prevents thermal shock
+- **Tolerance Band**: ±0.3°C acceptable deviation reduces unnecessary adjustments
+- **Minimum Threshold**: Only acts on changes ≥0.5 levels
+- **Reasoning Output**: Every adjustment includes human-readable explanation
+
+### Self-Improving Training
+- **Automatic Back-Evaluation**: Validates predictions every training cycle
+- **Historical Backtraining**: Refine models using past data without reset
+- **Confidence Decay**: Time-based weighting (recent data > old data)
+- **Adaptive Learning**: River's online ML adjusts to changing conditions
+
+### Production-Ready Architecture
+- **Database Persistence**: Models survive restarts (PostgreSQL)
+- **Manual Reset Control**: Never auto-resets, only via UI/API
+- **Comprehensive Metrics**: MAE, RMSE, R², training samples, validation accuracy
+- **Complete Audit Trail**: All training events, predictions, and validations logged
+- **Export Capabilities**: CSV export for analysis (Excel, Python, R)
 
 ## 🤝 Contributing
 
@@ -476,8 +702,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <div align="center">
-
-**Made with ❤️ for smart home automation**
 
 [⬆ Back to Top](#-smart-radiator-assistant)
 

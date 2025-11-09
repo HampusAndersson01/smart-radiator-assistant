@@ -180,7 +180,12 @@ def init_database():
 def save_room_state(room: str, current_temp: float, target_temp: float, 
                      radiator_level: float, outdoor_temp: float = None, 
                      forecast_temp: float = None):
-    """Save a room state reading to the database"""
+    """Save a room state reading to the database (with validation)"""
+    # Validate temperature readings
+    if current_temp <= 0 or current_temp > 40 or current_temp < 5:
+        print(f"⚠️  Rejected invalid room state for {room}: temp={current_temp}°C (out of range)")
+        return
+    
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -367,6 +372,22 @@ def save_model(room: str, model_bytes: bytes):
     cursor.close()
     conn.close()
 
+def delete_model(room: str):
+    """Delete a model from the database"""
+    if not DATABASE_URL:
+        return
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ml_models WHERE room = %s", (room,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"Deleted model for {room}")
+    except Exception as e:
+        print(f"Error deleting model for {room}: {e}")
+
 def load_model(room: str) -> Optional[bytes]:
     """Load a serialized model from the database"""
     if not DATABASE_URL:
@@ -382,7 +403,13 @@ def load_model(room: str) -> Optional[bytes]:
         cursor.close()
         conn.close()
         
-        return result[0] if result else None
+        if result and result[0]:
+            # Convert memoryview to bytes if necessary
+            model_data = result[0]
+            if isinstance(model_data, memoryview):
+                model_data = bytes(model_data)
+            return model_data
+        return None
     except Exception as e:
         print(f"Error loading model for {room}: {e}")
         return None
@@ -555,7 +582,7 @@ def get_radiator_history(room: str = None, hours: int = 24) -> List[Dict]:
         print(f"Error getting radiator history: {e}")
         return []
 
-def get_latest_training_events(limit: int = 10) -> List[Dict]:
+def get_latest_training_events(limit: int = 10, offset: int = 0) -> List[Dict]:
     """Get the latest training events across all rooms"""
     if not DATABASE_URL:
         return []
@@ -565,13 +592,13 @@ def get_latest_training_events(limit: int = 10) -> List[Dict]:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         cursor.execute("""
-            SELECT room, current_temp, target_temp, radiator_level, 
+            SELECT id, room, current_temp, target_temp, radiator_level, 
                    temperature_delta, predicted_delta, outdoor_temp, 
                    forecast_temp, hour_of_day, timestamp
             FROM training_history
             ORDER BY timestamp DESC
-            LIMIT %s
-        """, (limit,))
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
         
         results = cursor.fetchall()
         cursor.close()
@@ -582,7 +609,7 @@ def get_latest_training_events(limit: int = 10) -> List[Dict]:
         print(f"Error getting latest training events: {e}")
         return []
 
-def get_latest_predictions(limit: int = 10) -> List[Dict]:
+def get_latest_predictions(limit: int = 10, offset: int = 0) -> List[Dict]:
     """Get the latest predictions across all rooms"""
     if not DATABASE_URL:
         return []
@@ -592,13 +619,13 @@ def get_latest_predictions(limit: int = 10) -> List[Dict]:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         cursor.execute("""
-            SELECT room, current_temp, target_temp, current_radiator_level, 
+            SELECT id, room, current_temp, target_temp, current_radiator_level, 
                    recommended_level, predicted_error, outdoor_temp, 
                    forecast_temp, adjustment_made, timestamp
             FROM predictions
             ORDER BY timestamp DESC
-            LIMIT %s
-        """, (limit,))
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
         
         results = cursor.fetchall()
         cursor.close()
@@ -608,6 +635,151 @@ def get_latest_predictions(limit: int = 10) -> List[Dict]:
     except Exception as e:
         print(f"Error getting latest predictions: {e}")
         return []
+
+def get_total_training_count() -> int:
+    """Get total count of training events"""
+    if not DATABASE_URL:
+        return 0
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM training_history")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"Error getting total training count: {e}")
+        return 0
+
+def get_total_predictions_count() -> int:
+    """Get total count of predictions"""
+    if not DATABASE_URL:
+        return 0
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM predictions")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"Error getting total predictions count: {e}")
+        return 0
+
+def get_radiator_level_temperature_by_hour(room: str = None, days: int = 30) -> Dict:
+    """Get average temperature by radiator level and hour of day for graphing (with anomaly filtering)"""
+    if not DATABASE_URL:
+        return {}
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        if room:
+            cursor.execute("""
+                WITH filtered_data AS (
+                    SELECT 
+                        radiator_level,
+                        EXTRACT(HOUR FROM timestamp) as hour,
+                        current_temp,
+                        timestamp,
+                        -- Calculate temperature change from previous reading
+                        LAG(current_temp) OVER (PARTITION BY radiator_level ORDER BY timestamp) as prev_temp,
+                        -- Calculate time diff from previous reading
+                        EXTRACT(EPOCH FROM (timestamp - LAG(timestamp) OVER (PARTITION BY radiator_level ORDER BY timestamp))) / 3600 as hours_diff
+                    FROM room_states
+                    WHERE room = %s 
+                      AND timestamp > NOW() - INTERVAL '%s days'
+                      AND current_temp > 0  -- Filter out null/0 readings
+                      AND current_temp < 40  -- Filter out unrealistic high temps
+                      AND current_temp > 5   -- Filter out unrealistic low temps
+                )
+                SELECT 
+                    radiator_level,
+                    hour,
+                    AVG(current_temp) as avg_temp,
+                    COUNT(*) as sample_count
+                FROM filtered_data
+                WHERE 
+                    -- Filter out readings with sudden temperature changes (>3°C per hour)
+                    (prev_temp IS NULL OR ABS(current_temp - prev_temp) / GREATEST(hours_diff, 0.1) < 3)
+                GROUP BY radiator_level, hour
+                HAVING COUNT(*) >= 3  -- Require at least 3 samples per hour
+                ORDER BY radiator_level, hour
+            """, (room, days))
+        else:
+            cursor.execute("""
+                WITH filtered_data AS (
+                    SELECT 
+                        room,
+                        radiator_level,
+                        EXTRACT(HOUR FROM timestamp) as hour,
+                        current_temp,
+                        timestamp,
+                        LAG(current_temp) OVER (PARTITION BY room, radiator_level ORDER BY timestamp) as prev_temp,
+                        EXTRACT(EPOCH FROM (timestamp - LAG(timestamp) OVER (PARTITION BY room, radiator_level ORDER BY timestamp))) / 3600 as hours_diff
+                    FROM room_states
+                    WHERE timestamp > NOW() - INTERVAL '%s days'
+                      AND current_temp > 0
+                      AND current_temp < 40
+                      AND current_temp > 5
+                )
+                SELECT 
+                    room,
+                    radiator_level,
+                    hour,
+                    AVG(current_temp) as avg_temp,
+                    COUNT(*) as sample_count
+                FROM filtered_data
+                WHERE 
+                    (prev_temp IS NULL OR ABS(current_temp - prev_temp) / GREATEST(hours_diff, 0.1) < 3)
+                GROUP BY room, radiator_level, hour
+                HAVING COUNT(*) >= 3
+                ORDER BY room, radiator_level, hour
+            """, (days,))
+        
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Organize data by room and radiator level
+        data = {}
+        for row in results:
+            row_dict = dict(row)
+            if room:
+                # Single room mode
+                level = row_dict['radiator_level']
+                if level not in data:
+                    data[level] = {}
+                data[level][int(row_dict['hour'])] = {
+                    'avg_temp': round(row_dict['avg_temp'], 2),
+                    'sample_count': row_dict['sample_count']
+                }
+            else:
+                # Multi-room mode
+                room_name = row_dict['room']
+                level = row_dict['radiator_level']
+                if room_name not in data:
+                    data[room_name] = {}
+                if level not in data[room_name]:
+                    data[room_name][level] = {}
+                data[room_name][level][int(row_dict['hour'])] = {
+                    'avg_temp': round(row_dict['avg_temp'], 2),
+                    'sample_count': row_dict['sample_count']
+                }
+        
+        return data
+    except Exception as e:
+        print(f"Error getting radiator level temperature by hour: {e}")
+        return {}
 
 def get_training_count_last_24h() -> int:
     """Get the count of training events in the last 24 hours"""

@@ -171,17 +171,5 @@ async def confirm(callback: types.CallbackQuery):
     await callback.message.edit_text(f"✅ {room} element inställt på {lvl} (måltemp {ROOMS[room]['target']}°C)")
     await callback.answer()
 
-    # Send a training ping (manual set). Current temp is left 0: n8n / sensors should provide real values
-    try:
-        requests.post(AI_URL, json={
-            "room": room,
-            "target_temp": ROOMS[room]["target"],
-            "current_temp": 0,
-            "radiator_level": lvl,
-            "timestamp": "manual"
-        }, timeout=5)
-    except Exception as e:
-        print(f"⚠️ AI training request failed: {e}")
-
 if __name__ == "__main__":
     executor.start_polling(dp)
